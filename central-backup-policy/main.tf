@@ -48,10 +48,14 @@ locals {
     "@@assign" = var.backup_delete_after
   }
 
-  backup_lifecycle = {
-    delete_after_days               = local.backup_delete_after
-    move_to_cold_storage_after_days = local.cold_storage_after
-  }
+  backup_lifecycle = merge({},
+    {
+      delete_after_days = local.backup_delete_after
+    },
+    var.cold_storage_after == null ? {} : {
+      move_to_cold_storage_after_days = local.cold_storage_after
+    }
+  )
 
   backup_plans = {
     plans = local.backup_policies
