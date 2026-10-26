@@ -19,6 +19,36 @@ data "aws_iam_policy_document" "key" {
       type        = "AWS"
     }
   }
+  // Copies of resources not fully managed by AWS Backup (EBS, EC2/AMI) are re-encrypted
+  // with this key by the backup role itself, not through a grant like RDS or EFS.
+  // Same scoping as the AWS managed aws/ebs key: callers from the allowed accounts, only through EC2 or AWS Backup.
+  statement {
+    sid = "AllowUseThroughEc2AndBackup"
+    actions = [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*"
+    ]
+    resources = ["*"]
+    principals {
+      identifiers = ["*"]
+      type        = "AWS"
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = local.key_user_account_ids
+    }
+    condition {
+      test     = "StringLike"
+      variable = "kms:ViaService"
+      values = [
+        "ec2.*.amazonaws.com",
+        "backup.*.amazonaws.com"
+      ]
+    }
+  }
 }
 
 resource "aws_backup_vault" "account_vault" {
@@ -89,9 +119,10 @@ data "aws_caller_identity" "this" {}
 data "aws_organizations_organization" "org" {}
 
 locals {
-  account_arn      = "arn:aws:iam::${local.account_id}:root"
-  account_id       = data.aws_caller_identity.this.account_id
-  admin_principals = coalesce(var.admin_principals, [local.account_arn])
-  parent_org_id    = data.aws_organizations_organization.org.id
+  account_arn          = "arn:aws:iam::${local.account_id}:root"
+  account_id           = data.aws_caller_identity.this.account_id
+  admin_principals     = coalesce(var.admin_principals, [local.account_arn])
+  key_user_account_ids = coalesce(var.key_user_account_ids, [local.account_id])
+  parent_org_id        = data.aws_organizations_organization.org.id
 }
 
